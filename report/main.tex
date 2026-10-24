@@ -1,0 +1,105 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern,amsmath,amssymb,graphicx,booktabs,array,listings,xcolor,float}
+\usepackage[margin=25mm]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\pagestyle{fancy}\fancyhf{}\lhead{Gas Turbine Thermodynamic Analysis}\rhead{Pouya Asghari}\cfoot{\thepage}
+\setlength{\headheight}{14pt}
+\lstset{language=Matlab,basicstyle=\ttfamily\scriptsize,breaklines=true,columns=fullflexible,keepspaces=true,showstringspaces=false,frame=single,rulecolor=\color{black!20},keywordstyle=\color{blue!60!black},commentstyle=\color{green!35!black}}
+\setlength{\parindent}{0pt}\setlength{\parskip}{6pt}
+\newcommand{\fig}[3]{\begin{figure}[H]\centering\includegraphics[width=#2\linewidth]{figures/#1}\caption{#3}\end{figure}}
+\begin{document}\hypersetup{pageanchor=false}
+\begin{titlepage}\centering
+\includegraphics[height=22mm]{figures/rId8.png}\hfill\includegraphics[height=22mm]{figures/rId9.png}\par
+\vspace{22mm}
+{\large Thermodynamics II\par}\vspace{10mm}
+{\LARGE\bfseries Gas Turbine Thermodynamic Analysis\par}\vspace{5mm}
+{\large Project One\par}\vspace{18mm}
+{\large Pouya Asghari\par}Student ID: 810600037
+\vfill
+School of Mechanical Engineering\\College of Engineering, University of Tehran\\First semester, academic year 1403--1404 (Iranian calendar)
+\end{titlepage}\hypersetup{pageanchor=true}
+\section*{About this English edition}
+This edition translates the supplied Persian report and retains its equations, screenshots, and code excerpts. Section titles have been added for navigation. Source code printed from the Word report is a documentary transcription, including source spacing; use the native MATLAB files for execution. A separate editorial appendix identifies discrepancies without silently correcting the historical model. No MATLAB or App Designer calculation was executed during conversion. The screenshot shows an interface, not a verified numerical result.
+\tableofcontents\newpage
+\section{Compressor inlet and compression}
+First, the compressor inlet temperature and pressure are used with the CoolProp library to determine enthalpy and entropy. Since the pressure ratio is known, the pressures at states 2, 3, and 4 can also be determined; the combustion chamber operates at constant pressure.
+
+We first assume an ideal compressor with isentropic compression. This gives $s_{2s}$ and hence $h_{2s}$. The ideal compressor work is obtained from the enthalpy difference, and the compressor efficiency then gives the actual enthalpy at state 2. The source refers to the difference $h_1-h_{2s}$ in its prose; the code below uses the positive compressor-work convention $h_{2s}-h_1$.
+\fig{rId10.png}{0.82}{Original compressor calculation screenshot.}
+\section{Combustion and product composition}
+The calculation so far is the straightforward part. If heat were added without mixing air and fuel, the enthalpy and entropy at states 4 and 5 could be obtained directly, after which the remaining quantities would follow. Here, however, a hydrocarbon fuel $\mathrm{C}_x\mathrm{H}_y$ mixes with air containing 21\% oxygen and 79\% nitrogen. Each chemical species must therefore be considered separately.
+\begin{multline}
+\mathrm{C}_x\mathrm{H}_y+\left(x+\frac{y}{4}\right)(1+EA)
+(\mathrm{O}_2+3.76\mathrm{N}_2)\\
+\longrightarrow b\mathrm{CO}_2+c\mathrm{H}_2\mathrm{O}+d\mathrm{CO}
++e\mathrm{NO}+f\mathrm{O}_2+g\mathrm{N}_2.
+\end{multline}
+As indicated by this reaction, seven unknowns must be determined: $EA,b,c,d,e,f,g$. Here $EA$ represents excess air relative to the stoichiometric amount. The equations in the supplied implementation specialize the general hydrocarbon reaction to methane.
+
+The mass balances give four equations. In the original displayed equations these are written as
+\begin{align}
+\text{C balance:}\quad 1&=b+d,\\
+\text{H balance:}\quad 4&=2c,\\
+\text{O balance:}\quad 4(1+EA)&=2b+2+d+e+2f,\\
+\text{N balance:}\quad 4(1+EA)3.76&=e+2g.
+\end{align}
+The oxygen balance above uses $c=2$; the code retains $c$ symbolically in that position.
+
+There are six product species and four elements, so two equilibrium-constant equations can be written: $6-4=2$.
+\subsection{Carbon dioxide dissociation}
+The first reaction is
+\begin{equation}\mathrm{CO}_2\longrightarrow\mathrm{CO}+\tfrac12\mathrm{O}_2.\end{equation}
+The Gibbs relations are then used to calculate $K_p$.
+\fig{rId12.png}{0.78}{Original code for the first equilibrium constant.}
+\subsection{Nitric oxide formation}
+The same procedure is applied to the second reaction:
+\begin{equation}\tfrac12\mathrm{N}_2+\tfrac12\mathrm{O}_2\longrightarrow\mathrm{NO}.\end{equation}
+\fig{rId13.png}{0.98}{Original code for the second equilibrium constant.}
+The source states that NO properties are unavailable in the CoolProp library used for this project. NO is omitted where its influence is assumed negligible, while approximate relations are used to include it later.
+\section{Adiabatic combustion and excess-air search}
+Four mass-balance equations and two equilibrium-constant equations are now available. One more equation is needed to determine the remaining unknown, excess air.
+
+The combustion chamber is assumed adiabatic, with no heat loss. The total energy of the incoming fuel and air should therefore be approximately equal to that of the products. To impose this condition, a \texttt{for} loop assigns $EA$ values from 0 to 2 in increments of 0.1. In each iteration, the enthalpies of the fuel, air, and products are calculated and their difference is updated. The intention is to bring the energy equation close to balance and find a physically representative excess-air value.
+
+For a prescribed $EA$ in each iteration, the problem becomes six equations in six unknowns. These are solved using \texttt{vpasolve}. The product molar coefficients are calculated in each loop, after which the remaining energy relations can be evaluated.
+\lstinputlisting{listings/combustor.m}
+\section{Turbine inlet properties: state 4}
+After determining $EA$, the corresponding product coefficients can be calculated. To obtain the enthalpy and entropy at state 4, immediately before the turbine, a relation of the following form is written for each species:
+\begin{equation}h=h_f+h_T-h_0.\end{equation}
+The following code is transcribed from the report. It explicitly assigns $EA=1.4$ after the search.
+\lstinputlisting{listings/state4.m}
+\section{Turbine outlet properties: state 5}
+Once the enthalpy and entropy at state 4 are known, the turbine efficiency can be used to determine the corresponding outlet quantities at state 5. The source writes
+\begin{align}s_{5s}&=s_4,&P_5&=P_1,\\h_{5s}&=h_4-w_t/\eta_t,&h_5&=h_4-w_t.\end{align}
+To find the temperature at state 5, and consequently its entropy, the source again uses a search intended to bring the governing relations into agreement.
+\lstinputlisting{listings/state5.m}
+\section{Exergy losses and efficiencies}
+Finally, the source calculates exergies, losses, and efficiencies using the following expressions.
+\lstinputlisting{listings/exergy.m}
+These expressions are reproduced as submitted. Their interpretation and numerical consistency require the checks in Appendix~\ref{sec:review}.
+\section{MATLAB App Designer interface}
+The calculation is converted into a function and inserted into App Designer:
+\begin{lstlisting}
+function [P,T,h,s,ex_comp,ex_cc,ex_turb,ex_cycle,eta_cycle,eta2_comp,eta2_cc,eta2_turb,EA,b,c,d,e,f,g,AF] = GasTur(T1,P1,rp,eta_c,eta_t,T4,w_t)
+\end{lstlisting}
+The application created in App Designer is shown below.
+\fig{rId14.png}{1}{Original MATLAB application interface.}
+The application uses callbacks to display composition, pressures, entropies, enthalpies, temperatures, exergy quantities, efficiencies, and the air--fuel ratio:
+\lstinputlisting[basicstyle=\ttfamily\tiny]{listings/callbacks.m}
+\appendix\clearpage
+\section{Editorial review and reproduction limits}\label{sec:review}
+The following observations were added during conversion; they are not translated claims of the original author.
+\begin{enumerate}
+\item The report, Live Script, and application contain different numerical expressions. For example, the report prints \texttt{q\_out=h(5)-h(1)}, while the Live Script divides this difference by 9. The Live Script later divides \texttt{ex\_cc} by 900; the app includes divisions by 100 in component expressions. These versions must be reconciled before comparing efficiencies.
+\item The excess-air search compares each residual to the preceding iteration rather than a retained global minimum. It does not guarantee the best candidate. It is followed by \texttt{EA=1.4}, overriding the selected value. The final \texttt{q\_in} is not explicitly recomputed with that fixed composition.
+\item The report uses \texttt{MolProd/1000} in the outlet entropy conversion; the native code uses \texttt{(MolProd-30)*2/10000}. Neither expression is a documented, composition-dependent mean molar mass. The product mass per mole of fuel should be based on the solved coefficients before converting a reaction-total molar quantity to a mass basis.
+\item The source combines mass-specific pure-species entropy with mole fractions at state 4. Its enthalpy and entropy mixture bases, partial-pressure treatment, and NO approximation need a consistent formulation. Chemical and physical exergy contributions need explicit definitions and reference states before the combustion exergy expression is treated as validated.
+\item \texttt{s(5)} is assigned the last trial entropy, rather than the entropy stored with the selected trial temperature. The selected temperature is sought through the isentropic condition even though state 5 is labeled as the actual outlet. Consistency with actual outlet enthalpy and turbine efficiency remains to be checked.
+\item The enthalpy of formation assigned to water should be checked against the intended product phase and reference state. Absolute values in the energy residual also require review; they do not substitute for a consistent signed energy balance. No corrected numerical answer is supplied here.
+\item Native code contains an absolute Windows path. The included \texttt{GasTur.m} removes the Live Script wrapper and changes only that path to a repository-relative one. Its equations remain historical and unverified. The native app is unchanged and still needs its embedded path edited.
+\item The archive supplies a legacy CoolProp SWIG wrapper and a Windows 64-bit MEX binary. MATLAB, Symbolic Math Toolbox (for \texttt{syms} and \texttt{vpasolve}), and a compatible CoolProp interface are required. Native MATLAB execution and binary compatibility were not tested.
+\end{enumerate}
+The source contains no completed numerical results table or validation study. The app screenshot has empty output fields. This repository documents a coursework model and interface; it does not establish verified efficiency, emissions, or plant performance.
+\end{document}
